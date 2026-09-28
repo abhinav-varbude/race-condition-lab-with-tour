@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Incident #1842 — Payment Service</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css" />
+<style>
+  :root{
+    --bg:#0F1420;
+    --panel:#161D2E;
+    --panel-2:#1C2438;
+    --border:#2A3347;
+    --text:#E4E7EC;
+    --muted:#8B94A8;
+    --amber:#F2994A;
+    --red:#EB5757;
+    --green:#6FCF97;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+    min-height:100vh; padding:32px 20px 60px;
+  }
+  .wrap{max-width:880px; margin:0 auto;}
+  header{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:28px; flex-wrap:wrap;}
+  .titleblock h1{font-size:22px; margin:0 0 6px; font-weight:600; letter-spacing:-0.2px;}
+  .titleblock p{margin:0; color:var(--muted); font-size:14px; max-width:56ch; line-height:1.5;}
+  .severity{
+    background:rgba(235,87,87,0.12); border:1px solid rgba(235,87,87,0.4); color:var(--red);
+    padding:6px 12px; border-radius:6px; font-size:13px; font-weight:600; white-space:nowrap;
+  }
+  #startTour{
+    background:var(--amber); color:#1A1200; border:none; padding:10px 16px; border-radius:6px;
+    font-size:14px; font-weight:600; cursor:pointer;
+  }
+  #startTour:hover{ filter:brightness(1.08); }
+  .grid{display:grid; grid-template-columns: 1fr; gap:18px;}
+  @media(min-width:720px){ .grid{grid-template-columns: 280px 1fr;} }
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:20px;
+  }
+  .balance-label{font-size:13px; color:var(--muted); margin-bottom:6px;}
+  .balance{font-family:var(--mono); font-size:40px; font-weight:600; line-height:1;}
+  .balance.negative{color:var(--red);}
+  .balance-meta{margin-top:14px; font-size:13px; color:var(--muted); line-height:1.7;}
+  .balance-meta span{color:var(--text); font-family:var(--mono);}
+  .controls{display:flex; flex-direction:column; gap:10px;}
+  button.action{
+    background:var(--panel-2); border:1px solid var(--border); color:var(--text);
+    padding:12px 14px; border-radius:8px; font-size:14px; text-align:left; cursor:pointer;
+  }
+  button.action:hover{border-color:#3B4667;}
+  button.action .sub{display:block; color:var(--muted); font-size:12px; margin-top:2px; font-weight:400;}
+  button.action{font-weight:600;}
+  button.danger{color:var(--red);}
+  .log-card{margin-top:18px;}
+  .log-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;}
+  .log-head h2{font-size:14px; margin:0; font-weight:600; color:var(--muted); text-transform:none;}
+  #log{
+    background:#0B0F19; border:1px solid var(--border); border-radius:8px; padding:14px;
+    font-family:var(--mono); font-size:12.5px; line-height:1.7; height:220px; overflow-y:auto;
+    white-space:pre-wrap;
+  }
+  #log .ok{color:var(--green);}
+  #log .fail{color:var(--red);}
+  #log .info{color:var(--muted);}
+  .verdict{margin-top:12px; padding:12px 14px; border-radius:8px; font-size:13px; display:none;}
+  .verdict.show{display:block;}
+  .verdict.bad{background:rgba(235,87,87,0.1); border:1px solid rgba(235,87,87,0.35); color:#FFB4B4;}
+  .verdict.good{background:rgba(111,207,151,0.1); border:1px solid rgba(111,207,151,0.35); color:#B7F0CB;}
+  footer{margin-top:28px; color:var(--muted); font-size:12.5px; line-height:1.7;}
+  footer code{background:var(--panel-2); padding:1px 6px; border-radius:4px; font-family:var(--mono);}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="titleblock">
+      <h1>Incident #1842 — Payment Service</h1>
+      <p>Concurrent withdrawals are producing incorrect balances in production. Reproduce it here, then go fix <code style="font-family:ui-monospace">app/account.py</code>.</p>
+    </div>
+    <span class="severity">SEV-1 · Open</span>
+  </header>
+
+  <div style="margin-bottom:22px;">
+    <button id="startTour">▶ Walk me through this lab</button>
+  </div>
+
+  <div class="grid">
+    <div class="card" id="balanceCard">
+      <div class="balance-label">Account balance</div>
+      <div class="balance" id="balance">$100.00</div>
+      <div class="balance-meta">
+        Expected after test: <span id="expected">—</span><br/>
+        Requests sent: <span id="sentCount">0</span> · succeeded: <span id="okCount">0</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="controls">
+        <button class="action" id="singleBtn">
+          Single withdrawal — $10
+          <span class="sub">One request at a time. This always works correctly.</span>
+        </button>
+        <button class="action" id="concurrentBtn">
+          Run concurrent test — 10 × $5 at once
+          <span class="sub">Fires 10 withdrawals simultaneously to reproduce the race condition.</span>
+        </button>
+        <button class="action danger" id="resetBtn">
+          Reset account to $100.00
+          <span class="sub">Clears state before your next test run.</span>
+        </button>
+      </div>
+      <div class="verdict" id="verdict"></div>
+    </div>
+  </div>
+
+  <div class="card log-card">
+    <div class="log-head">
+      <h2>Request log</h2>
+      <button class="action" id="clearLogBtn" style="padding:6px 10px; font-size:12px; font-weight:500;">Clear</button>
+    </div>
+    <div id="log"><span class="info">Waiting for requests…</span></div>
+  </div>
+
+  <footer>
+    Server must be running: <code>uvicorn app.main:app --reload</code> — this page is served from the same FastAPI app on the forwarded port. Once you've reproduced the bug, open <code>app/account.py</code>, read the hints in the README, and fix <code>withdraw()</code>. Then reset and re-run the concurrent test to confirm the balance is now correct.
+  </footer>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
+<script>
+const logEl = document.getElementById('log');
+const balanceEl = document.getElementById('balance');
+const expectedEl = document.getElementById('expected');
+const sentEl = document.getElementById('sentCount');
+const okEl = document.getElementById('okCount');
+const verdictEl = document.getElementById('verdict');
+
+function log(msg, cls){
+  const line = document.createElement('div');
+  if(cls) line.className = cls;
+  line.textContent = msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function clearLog(){ logEl.innerHTML = ''; }
+
+async function refreshBalance(){
+  const res = await fetch('/balance');
+  const data = await res.json();
+  balanceEl.textContent = '$' + data.balance.toFixed(2);
+  balanceEl.classList.toggle('negative', data.balance < 0);
+  return data.balance;
+}
+
+document.getElementById('singleBtn').onclick = async () => {
+  clearLog();
+  verdictEl.classList.remove('show');
+  log('Sending single withdrawal of $10…', 'info');
+  const res = await fetch('/withdraw', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({amount:10})});
+  const data = await res.json();
+  log(res.ok ? `✓ succeeded — balance now $${data.balance.toFixed(2)}` : `✗ declined — ${data.detail}`, res.ok ? 'ok' : 'fail');
+  await refreshBalance();
+};
+
+document.getElementById('concurrentBtn').onclick = async () => {
+  clearLog();
+  verdictEl.classList.remove('show');
+  const startBalance = await refreshBalance();
+  const N = 10, amount = 5;
+  const expected = startBalance - N * amount;
+  expectedEl.textContent = '$' + expected.toFixed(2);
+  sentEl.textContent = N;
+  log(`Firing ${N} withdrawals of $${amount} at the same instant…`, 'info');
+
+  const requests = Array.from({length:N}, (_, i) =>
+    fetch('/withdraw', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({amount})})
+      .then(r => r.json().then(d => ({ok:r.ok, d, i})))
+  );
+  const results = await Promise.all(requests);
+  let okCount = 0;
+  results
+    .sort((a,b)=>a.i-b.i)
+    .forEach(r => {
+      if(r.ok) okCount++;
+      log(r.ok ? `✓ request ${r.i+1} succeeded` : `✗ request ${r.i+1} declined — ${r.d.detail}`, r.ok ? 'ok' : 'fail');
+    });
+  okEl.textContent = okCount;
+
+  const finalBalance = await refreshBalance();
+  const expectedFromSuccesses = startBalance - okCount * amount;
+
+  log(`\nFinal balance: $${finalBalance.toFixed(2)}`, 'info');
+  log(`Expected from ${okCount} successful withdrawals: $${expectedFromSuccesses.toFixed(2)}`, 'info');
+
+  verdictEl.classList.add('show');
+  if (Math.abs(finalBalance - expectedFromSuccesses) > 0.001 || finalBalance < 0) {
+    verdictEl.className = 'verdict show bad';
+    verdictEl.textContent = `Bug reproduced: the balance doesn't match what ${okCount} successful withdrawals should have produced. Some deductions were lost — this is the race condition.`;
+  } else {
+    verdictEl.className = 'verdict show good';
+    verdictEl.textContent = `Balance matches expectations. If you've already applied the fix, this is what correct looks like.`;
+  }
+};
+
+document.getElementById('resetBtn').onclick = async () => {
+  await fetch('/reset', {method:'POST'});
+  await refreshBalance();
+  clearLog();
+  verdictEl.classList.remove('show');
+  expectedEl.textContent = '—';
+  sentEl.textContent = '0';
+  okEl.textContent = '0';
+  log('Account reset to $100.00.', 'info');
+};
+
+document.getElementById('clearLogBtn').onclick = clearLog;
+
+refreshBalance();
+
+// ---- Guided tour ----
+const driverObj = window.driver.js.driver({
+  showProgress: true,
+  animate: true,
+  steps: [
+    { popover: {
+        title: 'Incident #1842',
+        description: 'Concurrent withdrawal requests are corrupting this account\'s balance in production. This page lets you reproduce the bug live, then confirm your fix. Click Next.'
+    }},
+    { element: '#balanceCard', popover: {
+        title: 'Account balance',
+        description: 'Starts at $100.00. Watch this number — after the concurrent test, it should exactly match "successful withdrawals × amount deducted from the start". If it doesn\'t, money is disappearing.'
+    }},
+    { element: '#singleBtn', popover: {
+        title: 'Step 1 — sequential works fine',
+        description: 'One withdrawal at a time never triggers the bug. Try it if you like — this mirrors why the bug wasn\'t caught in normal testing.'
+    }},
+    { element: '#concurrentBtn', popover: {
+        title: 'Step 2 — reproduce the race',
+        description: 'This fires 10 withdrawals at the exact same instant. Click it now and watch the request log and the verdict box below.'
+    }},
+    { element: '#log', popover: {
+        title: 'Request log',
+        description: 'Each line is one request\'s result. Notice several can succeed even when, sequentially, the account shouldn\'t have had enough balance left for all of them.'
+    }},
+    { element: '#resetBtn', popover: {
+        title: 'Reset between runs',
+        description: 'Puts the balance back to $100.00 so you get a clean run each time you test.'
+    }},
+    { popover: {
+        title: 'Now fix it',
+        description: 'Open app/account.py. The check (`if self.balance < amount`) and the update (`self.balance -= amount`) aren\'t atomic — two threads can both pass the check before either deducts. Wrap both steps in the existing `self._lock`. Then reset and re-run the concurrent test — the verdict box should turn green.'
+    }},
+  ]
+});
+document.getElementById('startTour').onclick = () => driverObj.drive();
+</script>
+</body>
+</html>

@@ -1,0 +1,101 @@
+{
+  "name": "race-condition-walkthrough",
+  "displayName": "Incident #1842 Walkthrough",
+  "description": "Guided walkthrough for the payment service race-condition lab",
+  "version": "0.0.2",
+  "publisher": "race-condition-lab",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "raceLab.openReadme",
+        "title": "Lab: Open Incident Report"
+      },
+      {
+        "command": "raceLab.openAccountFile",
+        "title": "Lab: Open account.py"
+      },
+      {
+        "command": "raceLab.runTests",
+        "title": "Lab: Run Tests"
+      },
+      {
+        "command": "raceLab.runServer",
+        "title": "Lab: Start API Server"
+      },
+      {
+        "command": "raceLab.openWalkthrough",
+        "title": "Lab: Open Walkthrough"
+      }
+    ],
+    "walkthroughs": [
+      {
+        "id": "raceConditionLab",
+        "title": "Incident #1842: Race Condition",
+        "description": "A step-by-step guide to finding and fixing the payment service bug.",
+        "steps": [
+          {
+            "id": "readme",
+            "title": "1. Read the incident report",
+            "description": "Every incident starts with the report: symptoms, the task, and hints if you get stuck.\n[Open README.md](command:raceLab.openReadme)",
+            "media": {
+              "markdown": "media/readme.md"
+            }
+          },
+          {
+            "id": "run-tests",
+            "title": "2. Reproduce the bug",
+            "description": "Run the test suite. One test passes sequentially, the other fails under concurrency \u2014 that's the bug.\n[Run pytest in terminal](command:raceLab.runTests)",
+            "media": {
+              "markdown": "media/tests.md"
+            }
+          },
+          {
+            "id": "inspect-code",
+            "title": "3. Find the race condition",
+            "description": "Open the file with the bug and read the `withdraw()` method carefully.\n[Open account.py](command:raceLab.openAccountFile)",
+            "media": {
+              "markdown": "media/inspect.md"
+            }
+          },
+          {
+            "id": "fix-it",
+            "title": "4. Apply the fix",
+            "description": "The check and the update need to happen as one atomic step. The lock for this already exists on the class \u2014 it's just never acquired in `withdraw()`.",
+            "media": {
+              "markdown": "media/fix.md"
+            }
+          },
+          {
+            "id": "verify",
+            "title": "5. Confirm the fix",
+            "description": "Re-run the tests. Both should pass now.\n[Run pytest in terminal](command:raceLab.runTests)",
+            "media": {
+              "markdown": "media/verify.md"
+            },
+            "completionEvents": [
+              "onCommand:raceLab.runTests"
+            ]
+          },
+          {
+            "id": "live-api",
+            "title": "6. Optional: try the live dashboard",
+            "description": "Start the API and open the forwarded port to reproduce the bug visually with concurrent requests.\n[Start the server](command:raceLab.runServer)",
+            "media": {
+              "markdown": "media/live.md"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}
